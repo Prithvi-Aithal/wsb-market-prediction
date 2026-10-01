@@ -49,6 +49,14 @@ results/                results.csv/json, backtest.csv, figures
 docs/                   write-up PDF + presentation
 ```
 
+## Team roles (explanation and presentation)
+For the review, each member is responsible for explaining and presenting these areas (both are expected to be able to answer questions on any part):
+
+| Member | Area | Files |
+|---|---|---|
+| Prithvi Aithal (PES1UG24CS909) | Problem and motivation; dataset; preprocessing, features and labels; chronological split and the leakage check; results tables and conclusions | `src/wsb_pipeline.py`, `src/leakage_check.py`, `results/` |
+| Sagar A Walikar (PES1UG24CS396) | Models (Newton's-method logistic regression, neural network); hyperparameter tuning; trading back-test; live demo | `src/models.py`, `src/run_experiments.py`, `src/demo.py` |
+
 ## Caveats
 Post timestamps are treated as UTC; a post at/after 13:30 UTC is matched to the next trading day's open in the `tradable` labels.
 Posts are a noisy, small-sample signal; test sets for TSLA/FB are only ~25–125 posts (standard error 5–10 pp), so

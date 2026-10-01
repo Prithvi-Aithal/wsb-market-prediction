@@ -199,6 +199,10 @@ def build_pptx(path):
         "Tuning lifts volatility models to the majority baseline for AMC and above random for TSLA",
         "Distribution shift (squeeze vs after) and small samples limit what can be learned",
         "Future: BERT features, daily aggregation, walk-forward CV, cost-aware strategy"])
+    slide("Team roles for this review", [
+        "Prithvi Aithal: problem, dataset, features and labels, chronological split, leakage check, results and conclusions",
+        "Sagar A Walikar: models (Newton logistic regression, neural net), tuning, back-test, live demo",
+        "Both of us can answer questions on any part"])
     slide("Live demo", ["python src/demo.py --quick TSLA   (live pipeline: posts -> features -> Newton LR + NN -> accuracy vs baselines)",
                         "python src/demo.py --stock GME --title \"...\" --score 1200 --comments 340",
                         "python src/demo.py --stock TSLA --task volatility --title \"...\"",
