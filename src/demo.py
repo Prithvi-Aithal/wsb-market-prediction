@@ -36,7 +36,7 @@ def predict(args):
     x = m["scaler"].transform(wp.log_scale(row))
     p_nn = float(m["nn"].predict_proba(x)[0, 1])
     p_lr = float(1 / (1 + np.exp(-x @ m["lr_coef"]))[0])
-    what = "price RISES at next open" if args.task == "direction" else "next-day move is LARGE (volatile)"
+    what = "price RISES at next open" if args.task == "direction" else "next-day move is LARGE"
     print(f"Sentiment  pos={pos:.2f} neu={neu:.2f} neg={neg:.2f}")
     print(f"P({what}):  neural net={p_nn:.2f}   logistic regression={p_lr:.2f}")
     if args.task == "direction":
@@ -57,6 +57,6 @@ if __name__ == "__main__":
     a = ap.parse_args()
     if a.replay:
         bt = pd.read_csv(os.path.join(wp.ROOT, "results", "backtest.csv"))
-        print(bt[bt.stock == a.replay].T.to_string(header=False))
+        print(bt[bt.stock == a.replay].fillna("n/a (no trades)").T.to_string(header=False))
     else:
         predict(a)
