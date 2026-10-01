@@ -54,8 +54,8 @@ For the review, each member is responsible for explaining and presenting these a
 
 | Member | Area | Files |
 |---|---|---|
-| Prithvi Aithal (PES1UG24CS909) | Problem and motivation; dataset; preprocessing, features and labels; chronological split and the leakage check; results tables and conclusions | `src/wsb_pipeline.py`, `src/leakage_check.py`, `results/` |
-| Sagar A Walikar (PES1UG24CS396) | Models (Newton's-method logistic regression, neural network); hyperparameter tuning; trading back-test; live demo | `src/models.py`, `src/run_experiments.py`, `src/demo.py` |
+| Prithvi Aithal (PES1UG24CS909) | Models (Newton's-method logistic regression, neural network); hyperparameter tuning; chronological split and the leakage check; conclusions | `src/models.py`, `src/run_experiments.py` (models and tuning), `src/leakage_check.py` |
+| Sagar A Walikar (PES1UG24CS396) | Problem and motivation; dataset; preprocessing, features and labels; results tables; trading back-test; live demo | `src/wsb_pipeline.py`, `src/run_experiments.py` (back-test), `src/demo.py`, `results/` |
 
 ## Caveats
 Post timestamps are treated as UTC; a post at/after 13:30 UTC is matched to the next trading day's open in the `tradable` labels.
