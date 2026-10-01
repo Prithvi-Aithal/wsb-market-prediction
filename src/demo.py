@@ -3,8 +3,10 @@
     python src/demo.py --stock GME --title "GME to the moon, diamond hands" --score 1200 --comments 340
     python src/demo.py --stock TSLA --task volatility --title "Tesla puts printing"
     python src/demo.py --replay GME        # replay the daily strategy on the held-out test period
+    python src/demo.py --quick GME         # run the real pipeline live on one stock (~1 min)
 
-Run `python src/run_experiments.py` first so that models/ exists.
+Scoring a post and --replay need the saved models/results (already in the repo, or created by
+`python src/run_experiments.py`). --quick needs only the dataset (downloaded automatically).
 """
 import argparse
 import os
@@ -45,6 +47,53 @@ def predict(args):
         print("Signal:", "VOLATILE - size down" if p_nn >= .5 else "calm")
 
 
+def quick(stock, use_nn=True):
+    """Live end-to-end run for one stock: raw posts -> features -> labels -> chronological
+    split -> Newton logistic regression (+ neural net) -> test accuracy vs baselines."""
+    import time
+
+    from sklearn.metrics import f1_score
+
+    from models import NewtonLogisticRegression, fit_neural_net
+    from run_experiments import BATCH, make_xy
+
+    t0 = time.time()
+    step = lambda msg: print(f"[{time.time() - t0:5.1f}s] {msg}", flush=True)
+    step(f"loading + cleaning posts, VADER sentiment for {stock} posts ...")
+    posts = wp.load_stock_posts(stock)
+    step(f"{len(posts):,} posts mention {stock}; features = {wp.FEATURES}")
+    prices = wp.load_prices(stock)
+    step(f"prices: {len(prices)} trading days ({prices.index[0].date()} to {prices.index[-1].date()})")
+    for task, mode in (("direction", "tradable"), ("volatility", "paper")):
+        lab = wp.add_labels(posts, prices, mode)
+        tr, va, te = wp.chrono_split(lab)
+        if task == "volatility":
+            thr = tr["ret"].abs().median()
+            for d in (tr, va, te):
+                d["y"] = (d["ret"].abs() > thr).astype(int)
+        else:
+            for d in (tr, va, te):
+                d["y"] = d["up"]
+        print(f"\n=== {task} task ({mode} labels): train {len(tr)} / val {len(va)} / test {len(te)} "
+              f"(test = {te.timestamp.min().date()} to {te.timestamp.max().date()}, strictly after training)")
+        Xtr, sc = make_xy(tr); Xva, _ = make_xy(va, sc); Xte, _ = make_xy(te, sc)
+        ytr, yva, yte = tr["y"].values, va["y"].values, te["y"].values
+        maj = int(ytr.mean() >= .5)
+        print(f"baselines on test: random guess 0.500 | majority class ({maj}) {(yte == maj).mean():.3f}")
+        lr = NewtonLogisticRegression().fit(Xtr, ytr)
+        print("Newton logistic regression, ||delta w|| per iteration:",
+              " ".join(f"{d:.1e}" for d in lr.deltas_))
+        print("  weights", {f: round(float(c), 2) for f, c in zip(wp.FEATURES, lr.coef_)})
+        print(f"  test accuracy {(lr.predict(Xte) == yte).mean():.3f}  F1 {f1_score(yte, lr.predict(Xte), zero_division=0):.3f}")
+        if use_nn:
+            step("training 3x256 ReLU network (Adam, 30 epochs, best epoch on validation) ...")
+            net, hist = fit_neural_net(Xtr, ytr, Xva, yva, batch_size=BATCH.get(stock, 16), seed=0)
+            p = net.predict(Xte)
+            print(f"  neural net test accuracy {(p == yte).mean():.3f}  F1 {f1_score(yte, p, zero_division=0):.3f} "
+                  f"(best validation epoch {int(np.argmax(hist)) + 1}, val acc {max(hist):.3f})")
+    step("done. Compare each model with the majority-class baseline, not with 0.5.")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--stock", default="GME", choices=list(wp.STOCK_PATTERNS))
@@ -54,8 +103,13 @@ if __name__ == "__main__":
     ap.add_argument("--score", type=int, default=100)
     ap.add_argument("--comments", type=int, default=20)
     ap.add_argument("--replay", metavar="STOCK", choices=list(wp.STOCK_PATTERNS))
+    ap.add_argument("--quick", metavar="STOCK", choices=list(wp.STOCK_PATTERNS),
+                    help="run the full pipeline live for one stock")
+    ap.add_argument("--no-nn", action="store_true", help="with --quick: skip the neural net (faster)")
     a = ap.parse_args()
-    if a.replay:
+    if a.quick:
+        quick(a.quick, use_nn=not a.no_nn)
+    elif a.replay:
         bt = pd.read_csv(os.path.join(wp.ROOT, "results", "backtest.csv"))
         print(bt[bt.stock == a.replay].fillna("n/a (no trades)").T.to_string(header=False))
     else:

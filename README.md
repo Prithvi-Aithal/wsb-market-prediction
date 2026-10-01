@@ -23,7 +23,7 @@ Download the dataset (no Kaggle login needed for this public dataset) into `data
 ```bash
 python -c "import kagglehub,shutil,glob; p=kagglehub.dataset_download('gpreda/reddit-wallstreetsbets-posts'); shutil.copy(glob.glob(p+'/*.csv')[0],'data/reddit_wsb.csv')"
 ```
-Prices are downloaded and cached automatically on first run.
+Prices are downloaded and cached automatically on first run. (`demo.py --quick` also downloads the dataset by itself if `data/reddit_wsb.csv` is missing.)
 
 ## Run
 ```bash
@@ -31,6 +31,7 @@ python src/run_experiments.py          # all experiments -> results/ (tables, fi
 python src/demo.py --stock GME --title "GME to the moon, diamond hands" --score 1200 --comments 340
 python src/demo.py --stock TSLA --task volatility --title "Tesla earnings tomorrow"
 python src/demo.py --replay GME        # back-test summary for a stock
+python src/demo.py --quick TSLA        # LIVE: raw posts -> features -> Newton LR + NN -> test accuracy vs baselines (~20 s; GME ~70 s)
 python src/leakage_check.py         # shuffled vs chronological split -> results/leakage_check.csv
 python docs/build_docs.py              # regenerates the 2-page write-up PDF and the slide deck
 ```
@@ -42,7 +43,7 @@ src/wsb_pipeline.py     data loading, preprocessing, features, labels, splits
 src/models.py           Newton logistic regression, neural network
 src/run_experiments.py  experiments, tuning, baselines, back-test, figures
 src/leakage_check.py    shuffled vs chronological split check
-src/demo.py             live demo
+src/demo.py             live demo (score a post, replay back-test, --quick end-to-end run)
 models/                 trained models used by the demo
 results/                results.csv/json, backtest.csv, figures
 docs/                   write-up PDF + presentation

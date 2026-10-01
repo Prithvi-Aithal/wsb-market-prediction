@@ -62,13 +62,34 @@ def load_posts(path: str = POSTS_CSV) -> pd.DataFrame:
     return df
 
 
-def _load_posts_uncached(path: str) -> pd.DataFrame:
+def ensure_data(path: str = POSTS_CSV) -> str:
+    """Download the Kaggle posts CSV into data/ if it is not there yet (public dataset, no login)."""
+    if not os.path.exists(path):
+        import glob
+        import shutil
+
+        import kagglehub
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        src = glob.glob(os.path.join(kagglehub.dataset_download("gpreda/reddit-wallstreetsbets-posts"), "*.csv"))[0]
+        shutil.copy(src, path)
+    return path
+
+
+def load_stock_posts(ticker: str, path: str = POSTS_CSV) -> pd.DataFrame:
+    """Same result as posts_for_stock(load_posts(), ticker) but runs sentiment only on
+    that stock's posts, so it takes seconds instead of ~1 minute (used by the quick demo)."""
+    return _load_posts_uncached(ensure_data(path), ticker)
+
+
+def _load_posts_uncached(path: str, ticker: str = None) -> pd.DataFrame:
     df = pd.read_csv(path)
     df = df.dropna(subset=["title", "timestamp"]).copy()   # NaN titles/timestamps dropped
     df["body"] = df["body"].fillna("")                     # body is empty for link posts
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df["text"] = (df["title"] + " " + df["body"]).map(clean_text)
     df = df[df["text"].str.len() > 0]
+    if ticker is not None:
+        df = df[df["text"].str.contains(STOCK_PATTERNS[ticker], regex=True)].copy()
     pos_neu_neg = df["text"].map(sentiment)
     df["positive_sentiment"] = [s[0] for s in pos_neu_neg]
     df["neutral_sentiment"] = [s[1] for s in pos_neu_neg]

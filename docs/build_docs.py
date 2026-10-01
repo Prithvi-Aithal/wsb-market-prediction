@@ -89,7 +89,7 @@ def build_pdf(path):
     s.append(Paragraph(
         "Python; <i>src/wsb_pipeline.py</i> (data, features, labels, splits), <i>src/models.py</i> (Newton logistic regression, network), "
         "<i>src/run_experiments.py</i> (experiments, tuning, baselines, back-test, figures), <i>src/leakage_check.py</i> (shuffled vs chronological split), "
-        "<i>src/demo.py</i> (live scoring of a post). Back-test: for every trading day, majority vote of the day's per-post predictions "
+        "<i>src/demo.py</i> (live scoring of a post, and a <i>--quick</i> mode that runs the whole pipeline live on one stock). Back-test: for every trading day, majority vote of the day's per-post predictions "
         "-&gt; long (open to next open) or flat, compared with going long on every day that had posts.", body))
     s.append(Paragraph("5. Results (held-out chronological test set, accuracy)", h))
     s.append(Paragraph("<b>Direction task, 'tradable' labels</b>", body))
@@ -199,9 +199,11 @@ def build_pptx(path):
         "Tuning lifts volatility models to the majority baseline for AMC and above random for TSLA",
         "Distribution shift (squeeze vs after) and small samples limit what can be learned",
         "Future: BERT features, daily aggregation, walk-forward CV, cost-aware strategy"])
-    slide("Live demo", ["python src/run_experiments.py", "python src/demo.py --stock GME --title \"...\" --score 1200 --comments 340",
+    slide("Live demo", ["python src/demo.py --quick TSLA   (live pipeline: posts -> features -> Newton LR + NN -> accuracy vs baselines)",
+                        "python src/demo.py --stock GME --title \"...\" --score 1200 --comments 340",
                         "python src/demo.py --stock TSLA --task volatility --title \"...\"",
-                        "python src/demo.py --replay GME"])
+                        "python src/demo.py --replay GME",
+                        "(run_experiments.py produces all of results/ and models/; several minutes)"])
     prs.core_properties.author = prs.core_properties.last_modified_by = "Prithvi Aithal, Sagar A Walikar"
     prs.core_properties.title = "WSB market prediction - mini-project"
     prs.save(path)
