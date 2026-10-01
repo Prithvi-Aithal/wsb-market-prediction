@@ -108,7 +108,7 @@ def build_pdf(path):
     s.append(Paragraph("6. Conclusions", h))
     best = {t: res[f"paper/volatility/{t}"] for t in T}
     s.append(Paragraph(
-        "(i) <b>Honest evaluation matters.</b> The report's high accuracies (GME 0.84, AMC 0.82) are only reproduced with shuffled splits; on a future "
+        "(i) <b>Honest evaluation matters.</b> We could not reproduce the report's high accuracies (GME 0.84, AMC 0.82) on a time-ordered split; a shuffled split inflates AMC and FB, which suggests leakage is a likely cause (we cannot verify the report's exact split). On a future "
         "hold-out no direction model beats the majority-class baseline by more than the test-set standard error (see table; AMC is far below it), so we cannot claim WSB post "
         "features predict next-day direction from these 7 features. "
         f"(ii) <b>Tuning helps where there is signal:</b> for AMC volatility the tuned network improves from {best['AMC']['nn_acc']:.2f} to "
@@ -185,16 +185,16 @@ def build_pptx(path):
     slide("Results: volatility (paper labels)", table=table_data("volatility", "paper"))
     slide("Accuracy overview", img=os.path.join(RES, "fig_accuracy_volatility.png"))
     lk = leak.set_index(["stock", "split"])
-    slide("Why the report's accuracies do not hold", [
-        "Same-day posts share a label -> shuffled splits leak",
+    slide("Why we do not match the report", [
+        "Same-day posts share a label -> shuffled splits can leak; the report's exact split is not stated, so this is a likely, not proven, cause",
         "NN accuracy shuffled vs chronological: " + "; ".join(
             f"{t} {lk.loc[(t, 'shuffled'), 'nn_acc']:.2f} vs {lk.loc[(t, 'chronological'), 'nn_acc']:.2f}" for t in T),
-        "Our chronological split is the honest estimate"])
+        "Other differences: data to Aug 2021, our own sentiment/label details. Our chronological split is the honest estimate"])
     slide("Trading back-test", ["Day-level majority vote of post predictions -> long or flat",
                                 "Strategy stays flat for GME/AMC/TSLA (never predicts 'up')",
                                 "No edge over always-long on FB (13 trades)"], img=os.path.join(RES, "fig_backtest.png"))
     slide("Conclusions", [
-        "Report's high accuracies come from leakage; honest evaluation shows no significant direction edge",
+        "We could not reproduce the report's accuracies; honest (time-ordered) evaluation shows no significant direction edge",
         "Tuning lifts volatility models to the majority baseline for AMC and above random for TSLA",
         "Distribution shift (squeeze vs after) and small samples limit what can be learned",
         "Future: BERT features, daily aggregation, walk-forward CV, cost-aware strategy"])
