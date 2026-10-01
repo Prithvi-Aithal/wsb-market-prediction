@@ -55,8 +55,8 @@ def build_pdf(path):
         return t
 
     s.append(Paragraph("Predicting Market Volatility and Short-Term Trading Signals from Reddit's WallStreetBets", title))
-    s.append(Paragraph("UE24CS352A Machine Learning - Mini-Project write-up &nbsp;|&nbsp; Team: [name 1, SRN], [name 2, SRN] "
-                       "&nbsp;|&nbsp; Repository: [private GitHub link]", ParagraphStyle("c", parent=body, alignment=1)))
+    s.append(Paragraph("UE24CS352A Machine Learning - Mini-Project write-up &nbsp;|&nbsp; Team: Prithvi Aithal (PES1UG24CS909), Sagar A Walikar (PES1UG24CS396) "
+                       "&nbsp;|&nbsp; Repository: github.com/Prithvi-Aithal/wsb-market-prediction (private)", ParagraphStyle("c", parent=body, alignment=1)))
     s.append(Paragraph("1. Problem statement", h))
     s.append(Paragraph(
         "Retail-investor communities such as r/WallStreetBets (WSB) moved prices during the January 2021 GameStop short squeeze. "
@@ -154,7 +154,7 @@ def build_pptx(path):
 
     s = prs.slides.add_slide(prs.slide_layouts[0])
     s.shapes.title.text = "Predicting Market Volatility & Short-Term Trading Signals from r/WallStreetBets"
-    s.placeholders[1].text = "UE24CS352A Machine Learning - Mini-Project\n[Team member 1, SRN] | [Team member 2, SRN]"
+    s.placeholders[1].text = "UE24CS352A Machine Learning - Mini-Project\nPrithvi Aithal (PES1UG24CS909) | Sagar A Walikar (PES1UG24CS396)"
     slide("Problem statement", [
         "WSB drove the Jan-2021 GameStop short squeeze",
         "Can post features predict next-day price direction and volatility?",
