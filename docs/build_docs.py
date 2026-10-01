@@ -43,7 +43,8 @@ def build_pdf(path):
     title = ParagraphStyle("t", parent=ss["Title"], fontSize=14, spaceAfter=2)
     doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=1.6 * cm, rightMargin=1.6 * cm,
                             topMargin=1.3 * cm, bottomMargin=1.2 * cm,
-                            title="Mini-project write-up: WSB market prediction")
+                            title="Mini-project write-up: WSB market prediction",
+                            author="Prithvi Aithal, Sagar A Walikar")
     s = []
 
     def tbl(data):
@@ -201,6 +202,8 @@ def build_pptx(path):
     slide("Live demo", ["python src/run_experiments.py", "python src/demo.py --stock GME --title \"...\" --score 1200 --comments 340",
                         "python src/demo.py --stock TSLA --task volatility --title \"...\"",
                         "python src/demo.py --replay GME"])
+    prs.core_properties.author = prs.core_properties.last_modified_by = "Prithvi Aithal, Sagar A Walikar"
+    prs.core_properties.title = "WSB market prediction - mini-project"
     prs.save(path)
 
 
