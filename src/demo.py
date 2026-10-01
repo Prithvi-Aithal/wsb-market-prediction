@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 
 import wsb_pipeline as wp
-from models import NewtonLogisticRegression  # noqa: F401  (kept for pickled-model compatibility)
 
 
 def load(stock, task):
@@ -40,8 +39,10 @@ def predict(args):
     what = "price RISES at next open" if args.task == "direction" else "next-day move is LARGE (volatile)"
     print(f"Sentiment  pos={pos:.2f} neu={neu:.2f} neg={neg:.2f}")
     print(f"P({what}):  neural net={p_nn:.2f}   logistic regression={p_lr:.2f}")
-    print("Signal:", "BUY / long" if p_nn >= .5 and args.task == "direction" else
-          "VOLATILE - size down" if p_nn >= .5 else "stay flat / calm")
+    if args.task == "direction":
+        print("Signal:", "BUY / long" if p_nn >= .5 else "stay flat")
+    else:
+        print("Signal:", "VOLATILE - size down" if p_nn >= .5 else "calm")
 
 
 if __name__ == "__main__":

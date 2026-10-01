@@ -109,7 +109,7 @@ def build_pdf(path):
     best = {t: res[f"paper/volatility/{t}"] for t in T}
     s.append(Paragraph(
         "(i) <b>Honest evaluation matters.</b> The report's high accuracies (GME 0.84, AMC 0.82) are only reproduced with shuffled splits; on a future "
-        "hold-out the direction models do not beat the majority-class baseline for GME, AMC or TSLA (see table), so we cannot claim WSB post "
+        "hold-out no direction model beats the majority-class baseline by more than the test-set standard error (see table; AMC is far below it), so we cannot claim WSB post "
         "features predict next-day direction from these 7 features. "
         f"(ii) <b>Tuning helps where there is signal:</b> for AMC volatility the tuned network improves from {best['AMC']['nn_acc']:.2f} to "
         f"{best['AMC']['nn_tuned_acc']:.2f} (matching the majority baseline {best['AMC']['majority_acc']:.2f}), and for TSLA from "
@@ -179,7 +179,7 @@ def build_pptx(path):
         "Tuning: L2 grid (val log-loss); NN random search over depth/width, lr, weight decay, batch (val accuracy)",
         "NN results averaged over 5 seeds"])
     slide("Newton convergence", ["||delta w|| falls below 1e-6 in 4-8 iterations for every stock",
-                                 "L2 term fixes the AMC non-convergence reported in the paper"],
+                                 "Unlike the report, AMC also converges (6 iterations)"],
           img=os.path.join(RES, "fig_convergence.png"))
     slide("Results: direction (tradable labels)", table=table_data("direction", "tradable"))
     slide("Results: volatility (paper labels)", table=table_data("volatility", "paper"))
@@ -194,7 +194,7 @@ def build_pptx(path):
                                 "Strategy stays flat for GME/AMC/TSLA (never predicts 'up')",
                                 "No edge over always-long on FB (13 trades)"], img=os.path.join(RES, "fig_backtest.png"))
     slide("Conclusions", [
-        "Report's high accuracies come from leakage; honest evaluation shows no direction edge",
+        "Report's high accuracies come from leakage; honest evaluation shows no significant direction edge",
         "Tuning lifts volatility models to the majority baseline for AMC and above random for TSLA",
         "Distribution shift (squeeze vs after) and small samples limit what can be learned",
         "Future: BERT features, daily aggregation, walk-forward CV, cost-aware strategy"])

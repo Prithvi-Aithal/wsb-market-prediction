@@ -15,7 +15,7 @@ UE24CS352A – Machine Learning mini-project. Re-implementation and extension of
 Splits are **chronological 80/10/10** (train/val/test), so the test set is strictly in the future.
 
 ## Setup
-Python 3.10+.
+Python 3.10+ (developed on 3.14). The saved models in `models/` were pickled with scikit-learn 1.9.1, so use the pinned versions.
 ```bash
 pip install -r requirements.txt
 ```
@@ -31,6 +31,7 @@ python src/run_experiments.py          # all experiments -> results/ (tables, fi
 python src/demo.py --stock GME --title "GME to the moon, diamond hands" --score 1200 --comments 340
 python src/demo.py --stock TSLA --task volatility --title "Tesla earnings tomorrow"
 python src/demo.py --replay GME        # back-test summary for a stock
+python src/leakage_check.py         # shuffled vs chronological split -> results/leakage_check.csv
 python docs/build_docs.py              # regenerates the 2-page write-up PDF and the slide deck
 ```
 `run_experiments.py` takes several minutes (neural-net seeds + hyper-parameter search).
@@ -40,11 +41,14 @@ python docs/build_docs.py              # regenerates the 2-page write-up PDF and
 src/wsb_pipeline.py     data loading, preprocessing, features, labels, splits
 src/models.py           Newton logistic regression, neural network
 src/run_experiments.py  experiments, tuning, baselines, back-test, figures
+src/leakage_check.py    shuffled vs chronological split check
 src/demo.py             live demo
+models/                 trained models used by the demo
 results/                results.csv/json, backtest.csv, figures
 docs/                   write-up PDF + presentation
 ```
 
 ## Caveats
+Post timestamps are treated as UTC; a post at/after 13:30 UTC is matched to the next trading day's open in the `tradable` labels.
 Posts are a noisy, small-sample signal; test sets for TSLA/FB are only ~25–125 posts (standard error 5–10 pp), so
 differences of a few points are not significant. Not financial advice.
