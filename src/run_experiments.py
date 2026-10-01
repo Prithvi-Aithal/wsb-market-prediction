@@ -1,0 +1,231 @@
+"""Run every experiment in the report and write tables/figures to results/.
+
+    python src/run_experiments.py
+
+Label modes (see wsb_pipeline.add_labels):  paper | tradable
+Tasks:  direction  - does the price rise from open(k) to open(k+1)?
+        volatility - is |open(k+1)/open(k) - 1| larger than the training-set
+                     median move for that stock (a "significant shift")?
+"""
+import json
+import os
+
+import joblib
+from joblib import Parallel, delayed
+import matplotlib
+import numpy as np
+import pandas as pd
+from sklearn.metrics import f1_score
+from sklearn.preprocessing import StandardScaler
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+import wsb_pipeline as wp
+from models import NewtonLogisticRegression, fit_neural_net
+
+ROOT = wp.ROOT
+RES = os.path.join(ROOT, "results")
+MODELS = os.path.join(ROOT, "models")
+os.makedirs(RES, exist_ok=True)
+os.makedirs(MODELS, exist_ok=True)
+
+TICKERS = list(wp.STOCK_PATTERNS)
+SEEDS = range(5)
+BATCH = {"TSLA": 64, "GME": 64}      # report: batch 64 for TSLA/GME, 16 elsewhere
+CYAN = "#00bfbf"
+plt.style.use("seaborn-v0_8-whitegrid")
+
+
+L2_GRID = [1e-6, 1e-4, 1e-2, 1e-1, 1.0, 10.0]
+
+
+def random_configs(rng, n=6):
+    """The report's configuration first, then random draws from the search space."""
+    yield {"hidden": (256, 256, 256), "lr": 1e-3, "alpha": 1e-4, "batch_size": 64}
+    for _ in range(n - 1):
+        yield {"hidden": [(32,), (64, 64), (128, 128), (256, 256), (256, 256, 256)][rng.integers(5)],
+               "lr": float(rng.choice([1e-4, 3e-4, 1e-3, 3e-3])),
+               "alpha": float(rng.choice([1e-4, 1e-2, 1e-1, 1.0])),
+               "batch_size": int(rng.choice([32, 64, 128]))}
+
+
+def make_xy(split, scaler=None):
+    X = wp.log_scale(split)
+    if scaler is None:
+        scaler = StandardScaler().fit(X)
+        scaler.mean_[-1], scaler.scale_[-1] = 0.0, 1.0   # keep bias column == 1
+    return scaler.transform(X), scaler
+
+
+def evaluate(ticker, mode, task, posts, prices, save=False):
+    lab = wp.add_labels(posts, prices, mode)
+    tr, va, te = wp.chrono_split(lab)
+    if task == "volatility":
+        thr = tr["ret"].abs().median()
+        for d in (tr, va, te):
+            d["y"] = (d["ret"].abs() > thr).astype(int)
+    else:
+        for d in (tr, va, te):
+            d["y"] = d["up"]
+    Xtr, sc = make_xy(tr)
+    Xva, _ = make_xy(va, sc)
+    Xte, _ = make_xy(te, sc)
+    ytr, yva, yte = tr["y"].values, va["y"].values, te["y"].values
+
+    out = {"n_train": len(tr), "n_val": len(va), "n_test": len(te),
+           "test_pos_rate": float(yte.mean())}
+    # baselines: uniform random guess (expected accuracy, 500 draws) and majority class
+    rng = np.random.default_rng(0)
+    out["random_acc"] = float(np.mean([(rng.integers(0, 2, len(yte)) == yte).mean() for _ in range(500)]))
+    maj = int(ytr.mean() >= 0.5)
+    out["majority_acc"] = float((yte == maj).mean())
+
+    # logistic regression (Newton's method) - report setting (l2=1e-4) ...
+    lr = NewtonLogisticRegression().fit(Xtr, ytr)
+    p_lr = lr.predict_proba(Xte)
+    # ... and tuned: L2 strength chosen by validation log-loss
+    best_l2, best_ll = None, np.inf
+    for l2 in L2_GRID:
+        m = NewtonLogisticRegression(l2=l2).fit(Xtr, ytr)
+        pv = np.clip(m.predict_proba(Xva), 1e-9, 1 - 1e-9)
+        ll = -np.mean(yva * np.log(pv) + (1 - yva) * np.log(1 - pv))
+        if ll < best_ll:
+            best_ll, best_l2 = ll, l2
+    lr_t = NewtonLogisticRegression(l2=best_l2).fit(Xtr, ytr)
+    out["lr_tuned_l2"] = best_l2
+    out["lr_tuned_acc"] = float(((lr_t.predict_proba(Xte) >= .5) == yte).mean())
+    out["lr_acc"] = float(((p_lr >= .5) == yte).mean())
+    out["lr_f1"] = float(f1_score(yte, p_lr >= .5, zero_division=0))
+    out["lr_converged"] = bool(lr.converged_)
+    out["lr_iters"] = len(lr.deltas_)
+
+    # neural network, averaged over seeds
+    accs, f1s, probs, nets = [], [], [], []
+    for s in SEEDS:
+        net, _ = fit_neural_net(Xtr, ytr, Xva, yva, batch_size=BATCH.get(ticker, 16), seed=s)
+        p = net.predict_proba(Xte)[:, 1]
+        probs.append(p); nets.append(net)
+        accs.append(float(((p >= .5) == yte).mean()))
+        f1s.append(float(f1_score(yte, p >= .5, zero_division=0)))
+    out["nn_acc"], out["nn_acc_std"] = float(np.mean(accs)), float(np.std(accs))
+    out["nn_f1"] = float(np.mean(f1s))
+    p_nn = np.mean(probs, axis=0)
+    out["nn_ens_acc"] = float(((p_nn >= .5) == yte).mean())
+    # hyper-parameter search for the net (random search, selected on validation
+    # accuracy with 1 seed / 15 epochs; the winner is re-trained with 5 seeds)
+    search_rng = np.random.default_rng(42)
+    best_cfg, best_val = None, -1.0
+    for cfg in random_configs(search_rng):
+        net, hist = fit_neural_net(Xtr, ytr, Xva, yva, epochs=15, seed=0, **cfg)
+        if max(hist) > best_val:
+            best_val, best_cfg = max(hist), cfg
+    out["nn_tuned_cfg"] = {k: (list(v) if isinstance(v, tuple) else v) for k, v in best_cfg.items()}
+    out["nn_tuned_val_acc"] = float(best_val)
+    taccs, tprobs, tnets = [], [], []
+    for s in SEEDS:
+        net, _ = fit_neural_net(Xtr, ytr, Xva, yva, seed=s, **best_cfg)
+        p = net.predict_proba(Xte)[:, 1]
+        tprobs.append(p); tnets.append(net)
+        taccs.append(float(((p >= .5) == yte).mean()))
+    out["nn_tuned_acc"], out["nn_tuned_acc_std"] = float(np.mean(taccs)), float(np.std(taccs))
+    p_tuned = np.mean(tprobs, axis=0)
+    out["nn_tuned_ens_acc"] = float(((p_tuned >= .5) == yte).mean())
+    out["se"] = float(np.sqrt(0.25 / max(len(yte), 1)))   # binomial std. error at p=0.5
+
+    if save:
+        joblib.dump({"scaler": sc, "lr_coef": lr_t.coef_, "nn": tnets[0], "nn_cfg": best_cfg},
+                    os.path.join(MODELS, f"{ticker}_{mode}_{task}.joblib"))
+    te = te.assign(p_nn=p_tuned, p_lr=p_lr)
+    return out, lr, te
+
+
+def backtest(te):
+    """Long when the majority of that day's posts are predicted 'up', else flat.
+    Benchmark: long on every day that had posts (same days, no model)."""
+    g = te.groupby("day").agg(ret=("ret", "first"), frac_up=("p_nn", lambda p: (p >= .5).mean()),
+                              n=("ret", "size"))
+    g["strategy"] = np.where(g["frac_up"] > 0.5, g["ret"], 0.0)
+    return g
+
+
+def main():
+    print("Loading and preprocessing posts ...")
+    posts = wp.load_posts()
+    prices = {t: wp.load_prices(t) for t in TICKERS}
+    stock_posts = {t: wp.posts_for_stock(posts, t) for t in TICKERS}
+    mentions = {t: len(v) for t, v in stock_posts.items()}
+    print("mentions:", mentions)
+
+    results, curves, bt_rows, equity = {}, {}, [], {}
+    jobs = [(m, k, t) for m in ("paper", "tradable") for k in ("direction", "volatility") for t in TICKERS]
+
+    def run(mode, task, t):
+        save = (mode == "tradable" and task == "direction") or (mode == "paper" and task == "volatility")
+        r, lr, te = evaluate(t, mode, task, stock_posts[t], prices[t], save=save)
+        return r, lr.deltas_, te
+
+    outs = Parallel(n_jobs=-1, verbose=5)(delayed(run)(*j) for j in jobs)   # one process per setting
+    for (mode, task, t), (r, deltas, te) in zip(jobs, outs):
+        results[f"{mode}/{task}/{t}"] = r
+        if mode == "paper" and task == "volatility":
+            curves[t] = deltas
+        if mode == "tradable" and task == "direction":
+            g = backtest(te)
+            equity[t] = g
+            bt_rows.append({
+                "stock": t, "days_traded": int((g["frac_up"] > .5).sum()), "days_with_posts": len(g),
+                "strategy_return_%": 100 * float((1 + g["strategy"]).prod() - 1),
+                "always_long_return_%": 100 * float((1 + g["ret"]).prod() - 1),
+                "strategy_hit_rate": float((g.loc[g["frac_up"] > .5, "ret"] > 0).mean()) if (g["frac_up"] > .5).any() else float("nan"),
+            })
+        print(f"{mode:8s} {task:10s} {t:5s}", {k: round(v, 3) if isinstance(v, float) else v for k, v in r.items()}, flush=True)
+
+    json.dump({"mentions": mentions, "results": results, "backtest": bt_rows},
+              open(os.path.join(RES, "results.json"), "w"), indent=2)
+    rows = [{"setting": k, **v} for k, v in results.items()]
+    pd.DataFrame(rows).to_csv(os.path.join(RES, "results.csv"), index=False)
+    pd.DataFrame(bt_rows).to_csv(os.path.join(RES, "backtest.csv"), index=False)
+
+    # ---- figures ----
+    fig, ax = plt.subplots(figsize=(6, 3.4))
+    ax.bar(mentions.keys(), mentions.values(), color=CYAN)
+    ax.set_ylabel("posts mentioning stock"); ax.set_title("Mentions of each stock in r/WallStreetBets")
+    fig.tight_layout(); fig.savefig(os.path.join(RES, "fig_mentions.png"), dpi=200); plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(6, 3.4))
+    for t, d in curves.items():
+        ax.semilogy(range(1, len(d) + 1), np.maximum(d, 1e-12), marker="o", label=t)
+    ax.set_xlabel("Newton iteration"); ax.set_ylabel("||delta w||")
+    ax.set_title("Convergence of the weight vector (logistic regression)"); ax.legend()
+    fig.tight_layout(); fig.savefig(os.path.join(RES, "fig_convergence.png"), dpi=200); plt.close(fig)
+
+    for task in ("direction", "volatility"):
+        fig, axes = plt.subplots(1, 2, figsize=(10, 3.4), sharey=True)
+        for ax, mode in zip(axes, ("paper", "tradable")):
+            x = np.arange(len(TICKERS)); w = 0.13
+            for i, (key, lab) in enumerate([("nn_acc", "NN (report cfg)"), ("nn_tuned_acc", "NN (tuned)"),
+                                            ("lr_acc", "LogReg (report)"), ("lr_tuned_acc", "LogReg (tuned)"),
+                                            ("majority_acc", "Majority"), ("random_acc", "Random")]):
+                vals = [results[f"{mode}/{task}/{t}"][key] for t in TICKERS]
+                err = [results[f"{mode}/{task}/{t}"].get(key + "_std", 0) if key.startswith("nn") else 0 for t in TICKERS]
+                ax.bar(x + (i - 2.5) * w, vals, w, yerr=err, label=lab)
+            ax.axhline(0.5, color="k", lw=.6, ls=":")
+            ax.set_xticks(x); ax.set_xticklabels(TICKERS); ax.set_title(f"{task} - '{mode}' labels")
+            ax.set_ylim(0, 1)
+        axes[0].set_ylabel("test accuracy"); axes[0].legend(fontsize=7, ncol=2)
+        fig.tight_layout(); fig.savefig(os.path.join(RES, f"fig_accuracy_{task}.png"), dpi=200); plt.close(fig)
+
+    fig, axes = plt.subplots(1, len(TICKERS), figsize=(12, 2.8))
+    for ax, t in zip(axes, TICKERS):
+        g = equity[t]
+        ax.plot(g.index, (1 + g["strategy"]).cumprod(), label="WSB-NN strategy", color=CYAN)
+        ax.plot(g.index, (1 + g["ret"]).cumprod(), label="always long", color="gray")
+        ax.set_title(t); ax.tick_params(axis="x", rotation=45, labelsize=7)
+    axes[0].legend(fontsize=7); axes[0].set_ylabel("growth of $1")
+    fig.tight_layout(); fig.savefig(os.path.join(RES, "fig_backtest.png"), dpi=200); plt.close(fig)
+    print("\nBacktest:\n", pd.DataFrame(bt_rows).round(3).to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()

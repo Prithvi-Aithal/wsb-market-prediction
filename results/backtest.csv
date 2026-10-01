@@ -1,0 +1,5 @@
+stock,days_traded,days_with_posts,strategy_return_%,always_long_return_%,strategy_hit_rate
+GME,0,92,0.0,-35.188946417396494,
+AMC,0,67,0.0,415.75553496554346,
+TSLA,0,26,0.0,-8.120766218422283,
+FB,13,17,-1.195086810993795,3.1727563191552566,0.5384615384615384
