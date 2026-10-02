@@ -132,7 +132,9 @@ def build_pptx(path):
         s = prs.slides.add_slide(prs.slide_layouts[5])
         s.shapes.title.text = title
         s.shapes.title.text_frame.paragraphs[0].font.size = Pt(30)
-        s.shapes.title.left, s.shapes.title.width = Inches(0.5), Inches(12.3)   # layouts are sized for 10 in; slide is 13.33 in
+        # layouts are sized for a 10 in slide; place the title explicitly (all four values) on the 13.33 in slide
+        t = s.shapes.title
+        t.left, t.top, t.width, t.height = Inches(0.5), Inches(0.35), Inches(12.3), Inches(0.9)
         top = 1.4
         if bullets:
             w = 6.2 if img else 12.3
@@ -157,8 +159,9 @@ def build_pptx(path):
     s = prs.slides.add_slide(prs.slide_layouts[0])
     s.shapes.title.text = "Predicting Market Volatility & Short-Term Trading Signals from r/WallStreetBets"
     s.shapes.title.text_frame.paragraphs[0].font.size = Pt(36)
-    for ph in (s.shapes.title, s.placeholders[1]):
-        ph.left, ph.width = Inches(1.0), Inches(11.33)
+    t, sub_ = s.shapes.title, s.placeholders[1]
+    t.left, t.top, t.width, t.height = Inches(1.0), Inches(2.0), Inches(11.33), Inches(1.9)
+    sub_.left, sub_.top, sub_.width, sub_.height = Inches(1.0), Inches(4.2), Inches(11.33), Inches(1.4)
     s.placeholders[1].text = "UE24CS352A Machine Learning - Mini-Project\nPrithvi Aithal (PES1UG24CS909) | Sagar A Walikar (PES1UG24CS396)"
     slide("Problem statement", [
         "WSB drove the Jan-2021 GameStop short squeeze",
