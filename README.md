@@ -15,7 +15,7 @@ UE24CS352A – Machine Learning mini-project. Re-implementation and extension of
 Splits are **chronological 80/10/10** (train/val/test), so the test set is strictly in the future.
 
 ## Setup
-Python 3.10+ (developed on 3.14). The saved models in `models/` were pickled with scikit-learn 1.9.1, so use the pinned versions.
+**Python 3.12 or newer** (developed on 3.14; the pinned numpy 2.5 requires 3.12+). Check with `python --version`. The saved models in `models/` were pickled with scikit-learn 1.9.1, so use the pinned versions.
 ```bash
 pip install -r requirements.txt
 ```
