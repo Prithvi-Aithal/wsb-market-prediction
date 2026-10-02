@@ -201,7 +201,7 @@ def main():
     fig.tight_layout(); fig.savefig(os.path.join(RES, "fig_convergence.png"), dpi=200); plt.close(fig)
 
     for task in ("direction", "volatility"):
-        fig, axes = plt.subplots(1, 2, figsize=(10, 3.4), sharey=True)
+        fig, axes = plt.subplots(1, 2, figsize=(10, 3.8), sharey=True)
         for ax, mode in zip(axes, ("paper", "tradable")):
             x = np.arange(len(TICKERS)); w = 0.13
             for i, (key, lab) in enumerate([("nn_acc", "NN (report cfg)"), ("nn_tuned_acc", "NN (tuned)"),
@@ -213,8 +213,10 @@ def main():
             ax.axhline(0.5, color="k", lw=.6, ls=":")
             ax.set_xticks(x); ax.set_xticklabels(TICKERS); ax.set_title(f"{task} - '{mode}' labels")
             ax.set_ylim(0, 1)
-        axes[0].set_ylabel("test accuracy"); axes[0].legend(fontsize=7, ncol=2)
-        fig.tight_layout(); fig.savefig(os.path.join(RES, f"fig_accuracy_{task}.png"), dpi=200); plt.close(fig)
+        axes[0].set_ylabel("test accuracy")
+        handles, labels = axes[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="lower center", ncol=6, fontsize=8, frameon=False)   # below the bars, never covering them
+        fig.tight_layout(rect=(0, 0.08, 1, 1)); fig.savefig(os.path.join(RES, f"fig_accuracy_{task}.png"), dpi=200); plt.close(fig)
 
     fig, axes = plt.subplots(1, len(TICKERS), figsize=(12, 2.8))
     for ax, t in zip(axes, TICKERS):

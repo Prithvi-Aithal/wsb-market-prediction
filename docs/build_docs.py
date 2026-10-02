@@ -105,16 +105,16 @@ def build_pdf(path):
         + "; on our <i>chronological</i> split it scores "
         + ", ".join(f"{t} {lk.loc[(t, 'chronological'), 'nn_acc']:.2f}" for t in T)
         + ". Same-day posts share a label, so shuffling leaks the answer.", body))
-    s.append(Image(os.path.join(RES, "fig_accuracy_volatility.png"), width=15.5 * cm, height=15.5 * cm * 3.4 / 10))
+    s.append(Image(os.path.join(RES, "fig_accuracy_volatility.png"), width=15.5 * cm, height=15.5 * cm * 3.8 / 10))
     s.append(Paragraph("6. Conclusions", h))
     best = {t: res[f"paper/volatility/{t}"] for t in T}
     s.append(Paragraph(
         "(i) <b>Honest evaluation matters.</b> We could not reproduce the report's high accuracies (GME 0.84, AMC 0.82) on a time-ordered split; a shuffled split inflates AMC and FB, which suggests leakage is a likely cause (we cannot verify the report's exact split). On a future "
         "hold-out no direction model beats the majority-class baseline by more than the test-set standard error (see table; AMC is far below it), so we cannot claim WSB post "
         "features predict next-day direction from these 7 features. "
-        f"(ii) <b>Tuning helps where there is signal:</b> for AMC volatility the tuned network improves from {best['AMC']['nn_acc']:.2f} to "
-        f"{best['AMC']['nn_tuned_acc']:.2f} (matching the majority baseline {best['AMC']['majority_acc']:.2f}), and for TSLA from "
-        f"{best['TSLA']['nn_acc']:.2f} to {best['TSLA']['nn_tuned_acc']:.2f}; for the rest it mostly selects the trivial 'predict the majority' solution. "
+        f"(ii) <b>Tuning helps only modestly:</b> for AMC volatility the tuned network improves from {best['AMC']['nn_acc']:.2f} to "
+        f"{best['AMC']['nn_tuned_acc']:.2f} (only matching the trivial majority baseline {best['AMC']['majority_acc']:.2f}), and for TSLA from "
+        f"{best['TSLA']['nn_acc']:.2f} to {best['TSLA']['nn_tuned_acc']:.2f} (still far below its majority baseline {best['TSLA']['majority_acc']:.2f}); for the rest it mostly selects the trivial 'predict the majority' solution. "
         "(iii) The back-test confirms it: the strategy stays flat on GME/AMC/TSLA (it never predicts 'up') and slightly under-performs always-long on FB. "
         "(iv) Distribution shift is the main obstacle: post volume peaks during the Jan-Feb 2021 squeeze, so train and test regimes differ; "
         "TSLA and FB test sets are tiny (124 and 26 posts, std. error 5-10 pp), so their differences are not significant. "
@@ -132,6 +132,7 @@ def build_pptx(path):
         s = prs.slides.add_slide(prs.slide_layouts[5])
         s.shapes.title.text = title
         s.shapes.title.text_frame.paragraphs[0].font.size = Pt(30)
+        s.shapes.title.left, s.shapes.title.width = Inches(0.5), Inches(12.3)   # layouts are sized for 10 in; slide is 13.33 in
         top = 1.4
         if bullets:
             w = 6.2 if img else 12.3
@@ -155,6 +156,9 @@ def build_pptx(path):
 
     s = prs.slides.add_slide(prs.slide_layouts[0])
     s.shapes.title.text = "Predicting Market Volatility & Short-Term Trading Signals from r/WallStreetBets"
+    s.shapes.title.text_frame.paragraphs[0].font.size = Pt(36)
+    for ph in (s.shapes.title, s.placeholders[1]):
+        ph.left, ph.width = Inches(1.0), Inches(11.33)
     s.placeholders[1].text = "UE24CS352A Machine Learning - Mini-Project\nPrithvi Aithal (PES1UG24CS909) | Sagar A Walikar (PES1UG24CS396)"
     slide("Problem statement", [
         "WSB drove the Jan-2021 GameStop short squeeze",
@@ -196,7 +200,7 @@ def build_pptx(path):
                                 "No edge over always-long on FB (13 trades)"], img=os.path.join(RES, "fig_backtest.png"))
     slide("Conclusions", [
         "We could not reproduce the report's accuracies; honest (time-ordered) evaluation shows no significant direction edge",
-        "Tuning lifts volatility models to the majority baseline for AMC and above random for TSLA",
+        "Tuning helps only modestly: AMC volatility reaches (but does not beat) the majority baseline; TSLA improves but stays far below it",
         "Distribution shift (squeeze vs after) and small samples limit what can be learned",
         "Future: BERT features, daily aggregation, walk-forward CV, cost-aware strategy"])
     slide("Team roles for this review", [
