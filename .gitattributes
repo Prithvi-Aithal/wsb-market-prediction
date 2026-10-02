@@ -1,0 +1,5 @@
+# Never convert line endings in binary/generated files (a text-like PDF gets CRLF-corrupted by autocrlf on Windows)
+*.pdf binary
+*.pptx binary
+*.png binary
+*.joblib binary
