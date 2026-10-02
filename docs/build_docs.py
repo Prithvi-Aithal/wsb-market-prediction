@@ -184,7 +184,7 @@ def build_pptx(path):
         "Tuning: L2 grid (val log-loss); NN random search over depth/width, lr, weight decay, batch (val accuracy)",
         "NN results averaged over 5 seeds"])
     slide("Newton convergence", ["||delta w|| falls below 1e-6 in 4-8 iterations for every stock",
-                                 "Unlike the report, AMC also converges (6 iterations)"],
+                                 "Unlike the report, AMC also converges (6 iterations in the plotted run, 8 at most)"],
           img=os.path.join(RES, "fig_convergence.png"))
     slide("Results: direction (tradable labels)", table=table_data("direction", "tradable"))
     slide("Results: volatility (paper labels)", table=table_data("volatility", "paper"))

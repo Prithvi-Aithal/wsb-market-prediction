@@ -11,10 +11,10 @@ import json
 import os
 
 import joblib
-from joblib import Parallel, delayed
 import matplotlib
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from sklearn.metrics import f1_score
 from sklearn.preprocessing import StandardScaler
 
@@ -41,7 +41,8 @@ L2_GRID = [1e-6, 1e-4, 1e-2, 1e-1, 1.0, 10.0]
 
 
 def random_configs(rng, n=6):
-    """The report's configuration first, then random draws from the search space."""
+    """A report-like configuration first (3x256, lr 1e-3, weight decay 1e-4, batch 64; searched for
+    15 epochs), then random draws from the search space."""
     yield {"hidden": (256, 256, 256), "lr": 1e-3, "alpha": 1e-4, "batch_size": 64}
     for _ in range(n - 1):
         yield {"hidden": [(32,), (64, 64), (128, 128), (256, 256), (256, 256, 256)][rng.integers(5)],
@@ -177,12 +178,12 @@ def main():
                 "stock": t, "days_traded": int((g["frac_up"] > .5).sum()), "days_with_posts": len(g),
                 "strategy_return_%": 100 * float((1 + g["strategy"]).prod() - 1),
                 "always_long_return_%": 100 * float((1 + g["ret"]).prod() - 1),
-                "strategy_hit_rate": float((g.loc[g["frac_up"] > .5, "ret"] > 0).mean()) if (g["frac_up"] > .5).any() else float("nan"),
+                "strategy_hit_rate": float((g.loc[g["frac_up"] > .5, "ret"] > 0).mean()) if (g["frac_up"] > .5).any() else None,   # None = no trades
             })
         print(f"{mode:8s} {task:10s} {t:5s}", {k: round(v, 3) if isinstance(v, float) else v for k, v in r.items()}, flush=True)
 
-    json.dump({"mentions": mentions, "results": results, "backtest": bt_rows},
-              open(os.path.join(RES, "results.json"), "w"), indent=2)
+    with open(os.path.join(RES, "results.json"), "w") as f:
+        json.dump({"mentions": mentions, "results": results, "backtest": bt_rows}, f, indent=2)
     rows = [{"setting": k, **v} for k, v in results.items()]
     pd.DataFrame(rows).to_csv(os.path.join(RES, "results.csv"), index=False)
     pd.DataFrame(bt_rows).to_csv(os.path.join(RES, "backtest.csv"), index=False)

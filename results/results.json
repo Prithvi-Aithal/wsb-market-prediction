@@ -531,7 +531,7 @@
       "days_with_posts": 92,
       "strategy_return_%": 0.0,
       "always_long_return_%": -35.188946417396494,
-      "strategy_hit_rate": NaN
+      "strategy_hit_rate": null
     },
     {
       "stock": "AMC",
@@ -539,7 +539,7 @@
       "days_with_posts": 67,
       "strategy_return_%": 0.0,
       "always_long_return_%": 415.75553496554346,
-      "strategy_hit_rate": NaN
+      "strategy_hit_rate": null
     },
     {
       "stock": "TSLA",
@@ -547,7 +547,7 @@
       "days_with_posts": 26,
       "strategy_return_%": 0.0,
       "always_long_return_%": -8.120766218422283,
-      "strategy_hit_rate": NaN
+      "strategy_hit_rate": null
     },
     {
       "stock": "FB",

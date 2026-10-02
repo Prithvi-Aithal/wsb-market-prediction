@@ -14,7 +14,7 @@ class NewtonLogisticRegression:
     when classes are (nearly) separable (its strength is tuned on validation data).
     On this data the solver converges in 4-8 iterations for every stock, with or
     without the L2 term.
-    Iteration history of ||delta w|| is stored in `deltas_` (Figure 3).
+    Iteration history of ||delta w|| is stored in `deltas_` (cf. Figure 3 of the CS229 report).
     """
 
     def __init__(self, max_iter=50, tol=1e-6, l2=1e-4):
