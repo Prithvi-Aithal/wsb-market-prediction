@@ -37,6 +37,15 @@ python docs/build_docs.py              # regenerates the 2-page write-up PDF and
 ```
 `run_experiments.py` takes several minutes (neural-net seeds + hyper-parameter search).
 
+## Tests
+Run the unit tests with:
+```bash
+python -m unittest discover -s tests -v
+```
+The tests cover Newton logistic regression convergence, text cleaning, paper and tradable
+label timing (including posts without a following price), chronological splitting, and
+feature scaling.
+
 ## Layout
 ```
 src/wsb_pipeline.py     data loading, preprocessing, features, labels, splits
@@ -44,6 +53,7 @@ src/models.py           Newton logistic regression, neural network
 src/run_experiments.py  experiments, tuning, baselines, back-test, figures
 src/leakage_check.py    shuffled vs chronological split check
 src/demo.py             live demo (score a post, replay back-test, --quick end-to-end run)
+tests/                  unit tests for models and pipeline helpers
 models/                 trained models used by the demo
 results/                results.csv/json, backtest.csv, figures
 docs/                   write-up PDF + presentation
