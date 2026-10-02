@@ -54,6 +54,7 @@ def sentiment(text: str) -> tuple:
 
 
 def load_posts(path: str = POSTS_CSV) -> pd.DataFrame:
+    ensure_data(path)
     cache = os.path.join(DATA_DIR, "posts_processed.pkl")   # VADER on 53k posts takes ~1 min
     if os.path.exists(cache) and os.path.getmtime(cache) > os.path.getmtime(path):
         return pd.read_pickle(cache)

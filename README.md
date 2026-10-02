@@ -19,11 +19,10 @@ Python 3.10+ (developed on 3.14). The saved models in `models/` were pickled wit
 ```bash
 pip install -r requirements.txt
 ```
-Download the dataset (no Kaggle login needed for this public dataset) into `data/`:
-```bash
-python -c "import kagglehub,shutil,glob; p=kagglehub.dataset_download('gpreda/reddit-wallstreetsbets-posts'); shutil.copy(glob.glob(p+'/*.csv')[0],'data/reddit_wsb.csv')"
-```
-Prices are downloaded and cached automatically on first run. (`demo.py --quick` also downloads the dataset by itself if `data/reddit_wsb.csv` is missing.)
+The dataset (Kaggle `gpreda/reddit-wallstreetsbets-posts`, public, no login needed) and the Yahoo Finance prices are
+downloaded automatically into `data/` the first time any script that needs them runs, and cached afterwards.
+To fetch the dataset up front: `python -c "import sys; sys.path.insert(0, 'src'); import wsb_pipeline as wp; wp.ensure_data()"`.
+The demo that scores a post and `--replay` need no download (they use the saved `models/` and `results/`).
 
 ## Run
 ```bash
@@ -32,7 +31,7 @@ python src/demo.py --stock GME --title "GME to the moon, diamond hands" --score 
 python src/demo.py --stock TSLA --task volatility --title "Tesla earnings tomorrow"
 python src/demo.py --replay GME        # back-test summary for a stock
 python src/demo.py --quick TSLA        # LIVE: raw posts -> features -> Newton LR + NN -> test accuracy vs baselines (~20 s; GME ~70 s)
-python src/leakage_check.py         # shuffled vs chronological split -> results/leakage_check.csv
+python src/leakage_check.py            # shuffled vs chronological split -> results/leakage_check.csv
 python docs/build_docs.py              # regenerates the 2-page write-up PDF and the slide deck
 ```
 `run_experiments.py` takes several minutes (neural-net seeds + hyper-parameter search).
