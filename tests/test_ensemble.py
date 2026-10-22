@@ -27,11 +27,9 @@ class ShrinkageEnsembleTests(unittest.TestCase):
 
     def test_tuning_trusts_features_only_when_they_predict_forward(self):
         X, y = toy_data(signal=True)
-        _, lam, _ = tune_ensemble(X, y, n_train=320, n_configs=2)
-        self.assertGreater(lam, 0.5)
+        self.assertGreater(tune_ensemble(X, y, n_train=320, n_configs=2)["lam"], 0.5)
         X, y = toy_data(signal=False)
-        _, lam, _ = tune_ensemble(X, y, n_train=320, n_configs=2)
-        self.assertLessEqual(lam, 0.25)
+        self.assertLessEqual(tune_ensemble(X, y, n_train=320, n_configs=2)["lam"], 0.25)
 
 
 class RelativeFeatureTests(unittest.TestCase):

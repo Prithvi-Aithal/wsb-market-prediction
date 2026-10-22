@@ -134,12 +134,14 @@ def tune_ensemble(X, y, n_train, n_configs=8, seed=42):
     X, y are the training rows followed by the validation rows (time order). Each
     candidate is scored by mean log-loss over forward-chaining folds: fit on the first
     40 / 60 / 80 % of the training split and score the next 20 %, then fit on the whole
-    training split and score the validation split. The test split is never used.
-    Ties go to the smaller lam (the simpler model). Returns (cfg, lam, cv_logloss).
+    training split and score the validation split (a fold whose training part has only
+    one class is skipped). The test split is never used. Ties go to the smaller lam
+    (the simpler model). Returns a dict: cfg, lam, cv_logloss, curve (mean CV log-loss
+    of the chosen cfg for every lam in ENS_LAMS) and n_folds.
     """
     cuts = [int(n_train * f) for f in (0.4, 0.6, 0.8)] + [n_train]
     folds = [(a, b) for a, b in zip(cuts, cuts[1:] + [len(y)]) if len(np.unique(y[:a])) == 2 and b > a]
-    best = (None, None, np.inf)
+    best = {"cv_logloss": np.inf}
     for cfg in ensemble_configs(np.random.default_rng(seed), n_configs):
         losses = np.zeros(len(ENS_LAMS))
         for a, b in folds:
@@ -148,6 +150,7 @@ def tune_ensemble(X, y, n_train, n_configs=8, seed=42):
             losses += [log_loss(y[a:b], lam * pv + (1 - lam) * m.prior_, labels=[0, 1]) for lam in ENS_LAMS]
         losses /= len(folds)
         i = int(np.argmin(losses))   # argmin returns the first (smallest) lam on ties
-        if losses[i] < best[2]:
-            best = (cfg, ENS_LAMS[i], float(losses[i]))
+        if losses[i] < best["cv_logloss"]:
+            best = {"cfg": cfg, "lam": ENS_LAMS[i], "cv_logloss": float(losses[i]),
+                    "curve": [float(v) for v in losses], "n_folds": len(folds)}
     return best

@@ -74,9 +74,9 @@ def fit_ensemble(posts, tr, va, te):
     Rva, _ = make_xy(rel.loc[va.index], sc, transform=wp.feature_matrix)
     Rte, _ = make_xy(rel.loc[te.index], sc, transform=wp.feature_matrix)
     X, y = np.vstack([Rtr, Rva]), np.concatenate([tr["y"].values, va["y"].values])
-    cfg, lam, cv_ll = tune_ensemble(X, y, len(tr))
-    ens = ShrinkageEnsemble(lam=lam, **cfg).fit(X, y)
-    return ens, sc, cfg, cv_ll, ens.predict_proba(Rte)
+    tuned = tune_ensemble(X, y, len(tr))
+    ens = ShrinkageEnsemble(lam=tuned["lam"], **tuned["cfg"]).fit(X, y)
+    return ens, sc, tuned, ens.predict_proba(Rte)
 
 
 def evaluate(ticker, mode, task, posts, prices, save=False):
@@ -95,7 +95,11 @@ def evaluate(ticker, mode, task, posts, prices, save=False):
     ytr, yva, yte = tr["y"].values, va["y"].values, te["y"].values
 
     out = {"n_train": len(tr), "n_val": len(va), "n_test": len(te),
-           "test_pos_rate": float(yte.mean())}
+           "train_pos_rate": float(ytr.mean()), "val_pos_rate": float(yva.mean()),
+           "test_pos_rate": float(yte.mean()),
+           # drift in engagement: mean log(1 + post_score) per split
+           "mean_log_score": {k: float(np.log1p(d["post_score"].clip(lower=0)).mean())
+                              for k, d in (("train", tr), ("val", va), ("test", te))}}
     # baselines: uniform random guess (expected accuracy, 500 draws) and majority class
     rng = np.random.default_rng(0)
     out["random_acc"] = float(np.mean([(rng.integers(0, 2, len(yte)) == yte).mean() for _ in range(500)]))
@@ -155,10 +159,12 @@ def evaluate(ticker, mode, task, posts, prices, save=False):
     out["se"] = float(np.sqrt(0.25 / max(len(yte), 1)))   # binomial std. error at p=0.5
 
     # new model: shrinkage ensemble (tuned by forward-chaining CV, never on test)
-    ens, ens_sc, ens_cfg, cv_ll, p_ens = fit_ensemble(posts, tr, va, te)
+    ens, ens_sc, tuned, p_ens = fit_ensemble(posts, tr, va, te)
     out["ens_acc"] = float(((p_ens >= .5) == yte).mean())
     out["ens_f1"] = float(f1_score(yte, p_ens >= .5, zero_division=0))
-    out["ens_lam"], out["ens_cfg"], out["ens_cv_logloss"] = ens.lam, ens_cfg, cv_ll
+    out["ens_lam"], out["ens_cfg"], out["ens_cv_logloss"] = ens.lam, tuned["cfg"], tuned["cv_logloss"]
+    out["ens_cv_curve"], out["ens_cv_folds"] = tuned["curve"], tuned["n_folds"]   # CV log-loss per lam in ENS_LAMS
+    out["ens_prior"] = ens.prior_
     # probabilistic metrics: log-loss (lower is better) and ROC AUC (0.5 = no ranking signal)
     p_lr_t = lr_t.predict_proba(Xte)
     for k, p in (("majority", np.full(len(yte), ytr.mean())), ("lr_tuned", p_lr_t),
