@@ -3,7 +3,7 @@
     python src/demo.py --stock GME --title "GME to the moon, diamond hands" --score 1200 --comments 340
     python src/demo.py --stock TSLA --task volatility --title "Tesla puts printing"
     python src/demo.py --replay GME        # replay the daily strategy on the held-out test period
-    python src/demo.py --quick GME         # run the real pipeline live on one stock (~1 min)
+    python src/demo.py --quick GME         # run the real pipeline live on one stock (a few minutes for GME)
 
 Scoring a post and --replay need the saved models/results (already in the repo, or created by
 `python src/run_experiments.py`). --quick needs only the dataset (downloaded automatically).
@@ -38,24 +38,31 @@ def predict(args):
     x = m["scaler"].transform(wp.log_scale(row))
     p_nn = float(m["nn"].predict_proba(x)[0, 1])
     p_lr = float(1 / (1 + np.exp(-x @ m["lr_coef"]))[0])
+    # shrinkage ensemble: counts become percentile ranks against the stock's latest posts
+    rel = row.copy()
+    for j, c in enumerate(wp.COUNTS):
+        rel[c] = wp.relative_rank(m["ens_history"][:, j], rel[c].iloc[0])
+    ens = m["ens"]
+    p_ens = float(ens.predict_proba(m["ens_scaler"].transform(wp.feature_matrix(rel)))[0])
     what = "price RISES at next open" if args.task == "direction" else "next-day move is LARGE"
     print(f"Sentiment  pos={pos:.2f} neu={neu:.2f} neg={neg:.2f}")
-    print(f"P({what}):  neural net={p_nn:.2f}   logistic regression={p_lr:.2f}")
+    print(f"P({what}):  neural net={p_nn:.2f}   logistic regression={p_lr:.2f}   "
+          f"shrinkage ensemble={p_ens:.2f} (lam={ens.lam}, prior={ens.prior_:.2f})")
     if args.task == "direction":
-        print("Signal:", "BUY / long" if p_nn >= .5 else "stay flat")
+        print("Signal (ensemble):", "BUY / long" if p_ens >= .5 else "stay flat")
     else:
-        print("Signal:", "VOLATILE - size down" if p_nn >= .5 else "calm")
+        print("Signal (ensemble):", "VOLATILE - size down" if p_ens >= .5 else "calm")
 
 
 def quick(stock, use_nn=True):
     """Live end-to-end run for one stock: raw posts -> features -> labels -> chronological
-    split -> Newton logistic regression (+ neural net) -> test accuracy vs baselines."""
+    split -> Newton logistic regression (+ neural net) + shrinkage ensemble -> test accuracy vs baselines."""
     import time
 
     from sklearn.metrics import f1_score
 
     from models import NewtonLogisticRegression, fit_neural_net
-    from run_experiments import BATCH, make_xy
+    from run_experiments import BATCH, fit_ensemble, make_xy
 
     t0 = time.time()
     step = lambda msg: print(f"[{time.time() - t0:5.1f}s] {msg}", flush=True)
@@ -91,6 +98,12 @@ def quick(stock, use_nn=True):
             p = net.predict(Xte)
             print(f"  neural net test accuracy {(p == yte).mean():.3f}  F1 {f1_score(yte, p, zero_division=0):.3f} "
                   f"(best validation epoch {int(np.argmax(hist)) + 1}, val acc {max(hist):.3f})")
+        step("tuning shrinkage ensemble (LR + random forest + gradient boosting + naive Bayes; "
+             "random search + lam by forward-chaining CV on train+val) ...")
+        ens, _, cfg, cv_ll, p_ens = fit_ensemble(posts, tr, va, te)
+        p = (p_ens >= .5).astype(int)
+        print(f"  chosen lam={ens.lam} (0 = trust the prior, 1 = trust the features), cfg {cfg}, CV log-loss {cv_ll:.3f}")
+        print(f"  shrinkage ensemble test accuracy {(p == yte).mean():.3f}  F1 {f1_score(yte, p, zero_division=0):.3f}")
     step("done. Compare each model with the majority-class baseline, not with 0.5.")
 
 

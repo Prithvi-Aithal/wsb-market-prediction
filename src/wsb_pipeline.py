@@ -162,6 +162,35 @@ def chrono_split(df: pd.DataFrame, fracs=(0.8, 0.1, 0.1)):
 def log_scale(X: pd.DataFrame) -> np.ndarray:
     """Heavy-tailed count features are log1p-transformed before standardising."""
     X = X[FEATURES].astype(float).copy()
-    for c in ["post_score", "total_comms_num", "len_of_post"]:
+    for c in COUNTS:
         X[c] = np.log1p(X[c].clip(lower=0))
     return X.values
+
+
+COUNTS = ["post_score", "total_comms_num", "len_of_post"]
+RANK_WINDOW = 200
+
+
+def relative_features(posts: pd.DataFrame, window: int = RANK_WINDOW) -> pd.DataFrame:
+    """Drift-robust version of the count features (used by the shrinkage ensemble).
+
+    Raw engagement drifts with the size of the subreddit (GME's mean log post_score
+    goes from 3.2 in the squeeze-month training split to 5.8 in the test split), so
+    each count is replaced by its percentile rank among the stock's last `window`
+    posts (this one included). Only earlier posts are used, so there is no look-ahead."""
+    out = posts.sort_values("timestamp").copy()
+    for c in COUNTS:
+        out[c] = out[c].astype(float).clip(lower=0).rolling(window, min_periods=1).rank(pct=True)
+    return out
+
+
+def relative_rank(history, value, window: int = RANK_WINDOW) -> float:
+    """Percentile rank of a new post's count among the last window-1 posts in `history`,
+    computed exactly as relative_features does (used by the demo to score one post)."""
+    s = pd.Series(np.append(np.asarray(history, float)[-(window - 1):], max(float(value), 0.0)))
+    return float(s.rank(pct=True).iloc[-1])
+
+
+def feature_matrix(X: pd.DataFrame) -> np.ndarray:
+    """The 7 features as they are (relative features are already on a 0-1 scale)."""
+    return X[FEATURES].astype(float).values

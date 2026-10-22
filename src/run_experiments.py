@@ -6,6 +6,8 @@ Label modes (see wsb_pipeline.add_labels):  paper | tradable
 Tasks:  direction  - does the price rise from open(k) to open(k+1)?
         volatility - is |open(k+1)/open(k) - 1| larger than the training-set
                      median move for that stock (a "significant shift")?
+Models: Newton logistic regression and the 3x256 network from the report, plus our
+        shrinkage ensemble (models.ShrinkageEnsemble) on drift-robust relative features.
 """
 import json
 import os
@@ -15,14 +17,14 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, log_loss, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import wsb_pipeline as wp
-from models import NewtonLogisticRegression, fit_neural_net
+from models import NewtonLogisticRegression, ShrinkageEnsemble, fit_neural_net, tune_ensemble
 
 ROOT = wp.ROOT
 RES = os.path.join(ROOT, "results")
@@ -51,12 +53,30 @@ def random_configs(rng, n=6):
                "batch_size": int(rng.choice([32, 64, 128]))}
 
 
-def make_xy(split, scaler=None):
-    X = wp.log_scale(split)
+def make_xy(split, scaler=None, transform=wp.log_scale):
+    X = transform(split)
     if scaler is None:
         scaler = StandardScaler().fit(X)
         scaler.mean_[-1], scaler.scale_[-1] = 0.0, 1.0   # keep bias column == 1
     return scaler.transform(X), scaler
+
+
+def auc(y, p):
+    return float(roc_auc_score(y, p)) if len(np.unique(y)) == 2 else None   # undefined with one class
+
+
+def fit_ensemble(posts, tr, va, te):
+    """New model: shrinkage ensemble on relative (percentile-rank) features. Hyper-parameters
+    and lam come from forward-chaining CV on train+val; the chosen model is then refit on
+    train+val (the most recent labelled data) and applied to the test split."""
+    rel = wp.relative_features(posts)
+    Rtr, sc = make_xy(rel.loc[tr.index], transform=wp.feature_matrix)
+    Rva, _ = make_xy(rel.loc[va.index], sc, transform=wp.feature_matrix)
+    Rte, _ = make_xy(rel.loc[te.index], sc, transform=wp.feature_matrix)
+    X, y = np.vstack([Rtr, Rva]), np.concatenate([tr["y"].values, va["y"].values])
+    cfg, lam, cv_ll = tune_ensemble(X, y, len(tr))
+    ens = ShrinkageEnsemble(lam=lam, **cfg).fit(X, y)
+    return ens, sc, cfg, cv_ll, ens.predict_proba(Rte)
 
 
 def evaluate(ticker, mode, task, posts, prices, save=False):
@@ -134,17 +154,33 @@ def evaluate(ticker, mode, task, posts, prices, save=False):
     out["nn_tuned_ens_acc"] = float(((p_tuned >= .5) == yte).mean())
     out["se"] = float(np.sqrt(0.25 / max(len(yte), 1)))   # binomial std. error at p=0.5
 
+    # new model: shrinkage ensemble (tuned by forward-chaining CV, never on test)
+    ens, ens_sc, ens_cfg, cv_ll, p_ens = fit_ensemble(posts, tr, va, te)
+    out["ens_acc"] = float(((p_ens >= .5) == yte).mean())
+    out["ens_f1"] = float(f1_score(yte, p_ens >= .5, zero_division=0))
+    out["ens_lam"], out["ens_cfg"], out["ens_cv_logloss"] = ens.lam, ens_cfg, cv_ll
+    # probabilistic metrics: log-loss (lower is better) and ROC AUC (0.5 = no ranking signal)
+    p_lr_t = lr_t.predict_proba(Xte)
+    for k, p in (("majority", np.full(len(yte), ytr.mean())), ("lr_tuned", p_lr_t),
+                 ("nn_tuned", p_tuned), ("ens", p_ens)):
+        out[f"{k}_logloss"] = float(log_loss(yte, np.clip(p, 1e-6, 1 - 1e-6), labels=[0, 1]))
+        if k != "majority":
+            out[f"{k}_auc"] = auc(yte, p)
+
     if save:
-        joblib.dump({"scaler": sc, "lr_coef": lr_t.coef_, "nn": tnets[0], "nn_cfg": best_cfg},
+        joblib.dump({"scaler": sc, "lr_coef": lr_t.coef_, "nn": tnets[0], "nn_cfg": best_cfg,
+                     "ens": ens, "ens_scaler": ens_sc,
+                     # last posts' raw counts, to rank a new post against (wp.relative_rank)
+                     "ens_history": posts.sort_values("timestamp")[wp.COUNTS].tail(wp.RANK_WINDOW - 1).values},
                     os.path.join(MODELS, f"{ticker}_{mode}_{task}.joblib"))
-    te = te.assign(p_nn=p_tuned, p_lr=p_lr)
+    te = te.assign(p_nn=p_tuned, p_lr=p_lr, p_ens=p_ens)
     return out, lr, te
 
 
-def backtest(te):
+def backtest(te, col="p_nn"):
     """Long when the majority of that day's posts are predicted 'up', else flat.
     Benchmark: long on every day that had posts (same days, no model)."""
-    g = te.groupby("day").agg(ret=("ret", "first"), frac_up=("p_nn", lambda p: (p >= .5).mean()),
+    g = te.groupby("day").agg(ret=("ret", "first"), frac_up=(col, lambda p: (p >= .5).mean()),
                               n=("ret", "size"))
     g["strategy"] = np.where(g["frac_up"] > 0.5, g["ret"], 0.0)
     return g
@@ -172,13 +208,15 @@ def main():
         if mode == "paper" and task == "volatility":
             curves[t] = deltas
         if mode == "tradable" and task == "direction":
-            g = backtest(te)
-            equity[t] = g
+            g, ge = backtest(te), backtest(te, "p_ens")
+            equity[t] = g.assign(ensemble=ge["strategy"])
             bt_rows.append({
                 "stock": t, "days_traded": int((g["frac_up"] > .5).sum()), "days_with_posts": len(g),
                 "strategy_return_%": 100 * float((1 + g["strategy"]).prod() - 1),
                 "always_long_return_%": 100 * float((1 + g["ret"]).prod() - 1),
                 "strategy_hit_rate": float((g.loc[g["frac_up"] > .5, "ret"] > 0).mean()) if (g["frac_up"] > .5).any() else None,   # None = no trades
+                "ensemble_days_traded": int((ge["frac_up"] > .5).sum()),
+                "ensemble_return_%": 100 * float((1 + ge["strategy"]).prod() - 1),
             })
         print(f"{mode:8s} {task:10s} {t:5s}", {k: round(v, 3) if isinstance(v, float) else v for k, v in r.items()}, flush=True)
 
@@ -204,25 +242,27 @@ def main():
     for task in ("direction", "volatility"):
         fig, axes = plt.subplots(1, 2, figsize=(10, 3.8), sharey=True)
         for ax, mode in zip(axes, ("paper", "tradable")):
-            x = np.arange(len(TICKERS)); w = 0.13
+            x = np.arange(len(TICKERS)); w = 0.115
             for i, (key, lab) in enumerate([("nn_acc", "NN (report cfg)"), ("nn_tuned_acc", "NN (tuned)"),
                                             ("lr_acc", "LogReg (report)"), ("lr_tuned_acc", "LogReg (tuned)"),
+                                            ("ens_acc", "Shrinkage ensemble (new)"),
                                             ("majority_acc", "Majority"), ("random_acc", "Random")]):
                 vals = [results[f"{mode}/{task}/{t}"][key] for t in TICKERS]
                 err = [results[f"{mode}/{task}/{t}"].get(key + "_std", 0) if key.startswith("nn") else 0 for t in TICKERS]
-                ax.bar(x + (i - 2.5) * w, vals, w, yerr=err, label=lab)
+                ax.bar(x + (i - 3) * w, vals, w, yerr=err, label=lab)
             ax.axhline(0.5, color="k", lw=.6, ls=":")
             ax.set_xticks(x); ax.set_xticklabels(TICKERS); ax.set_title(f"{task} - '{mode}' labels")
             ax.set_ylim(0, 1)
         axes[0].set_ylabel("test accuracy")
         handles, labels = axes[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="lower center", ncol=6, fontsize=8, frameon=False)   # below the bars, never covering them
+        fig.legend(handles, labels, loc="lower center", ncol=7, fontsize=7.5, frameon=False)   # below the bars, never covering them
         fig.tight_layout(rect=(0, 0.08, 1, 1)); fig.savefig(os.path.join(RES, f"fig_accuracy_{task}.png"), dpi=200); plt.close(fig)
 
     fig, axes = plt.subplots(1, len(TICKERS), figsize=(12, 2.8))
     for ax, t in zip(axes, TICKERS):
         g = equity[t]
         ax.plot(g.index, (1 + g["strategy"]).cumprod(), label="WSB-NN strategy", color=CYAN)
+        ax.plot(g.index, (1 + g["ensemble"]).cumprod(), label="ensemble strategy", color="#d1495b", ls="--")
         ax.plot(g.index, (1 + g["ret"]).cumprod(), label="always long", color="gray")
         ax.set_title(t); ax.tick_params(axis="x", rotation=45, labelsize=7)
     axes[0].legend(fontsize=7); axes[0].set_ylabel("growth of $1")
